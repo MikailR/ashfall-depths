@@ -21,23 +21,31 @@ jobs:
     steps:
       - name: Obtain build
         env:
-          # First run: fetch the Vite production build exported from the development sandbox.
-          # Later runs: reuse the copy already committed to the gh-pages branch.
+          # The Vite production build exported from the development sandbox. When the hash below
+          # changes the tarball is re-downloaded; otherwise the copy on gh-pages is reused.
           BUILD_URL: https://sudden-ids-because-files.trycloudflare.com/dist.tgz
-          BUILD_SHA256: fdb511cb3350a2673f063b00ed177bf546fc853c5a2c6eb276cab86c922c0628
+          BUILD_SHA256: 27532eca86d9292907cfafee38806ee56a956154e1ef147cb8d164e55f6d4925
         run: |
           set -euo pipefail
+          reuse=0
           if git ls-remote --exit-code --heads "https://github.com/${GITHUB_REPOSITORY}.git" gh-pages >/dev/null 2>&1; then
-            echo "Reusing build from gh-pages branch"
             git clone --quiet --depth=1 --branch gh-pages "https://github.com/${GITHUB_REPOSITORY}.git" site
             rm -rf site/.git
-          else
+            if [ -f site/.build-sha256 ] && [ "$(cat site/.build-sha256)" = "$BUILD_SHA256" ]; then
+              echo "Reusing build $BUILD_SHA256 from gh-pages"
+              reuse=1
+            else
+              rm -rf site
+            fi
+          fi
+          if [ "$reuse" = 0 ]; then
             echo "Downloading build from ${BUILD_URL}"
             mkdir -p site
             curl -fsSL --retry 5 --retry-delay 5 "$BUILD_URL" -o dist.tgz
             echo "${BUILD_SHA256}  dist.tgz" | sha256sum -c -
             tar -xzf dist.tgz -C site
             touch site/.nojekyll
+            echo "$BUILD_SHA256" > site/.build-sha256
           fi
           ls -la site site/assets
 
@@ -58,10 +66,14 @@ jobs:
         with:
           path: site
 
+  # Publishes through the Pages API. This job fails until GitHub Pages has been enabled once in
+  # Settings -> Pages (the default GITHUB_TOKEN is not allowed to enable it); the gh-pages branch
+  # produced above works with the "Deploy from a branch" mode regardless.
   deploy:
     name: Deploy to GitHub Pages
     needs: import
     runs-on: ubuntu-latest
+    continue-on-error: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
