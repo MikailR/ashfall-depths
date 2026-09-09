@@ -24,7 +24,7 @@ jobs:
           # The Vite production build exported from the development sandbox. When the hash below
           # changes the tarball is re-downloaded; otherwise the copy on gh-pages is reused.
           BUILD_URL: https://sudden-ids-because-files.trycloudflare.com/dist.tgz
-          BUILD_SHA256: 27532eca86d9292907cfafee38806ee56a956154e1ef147cb8d164e55f6d4925
+          BUILD_SHA256: f215a35ea3e53c8a39e93edb9644aadca781f54d256ffeae0eb0246f6b6f9dfa
         run: |
           set -euo pipefail
           reuse=0
