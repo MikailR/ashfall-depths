@@ -1,0 +1,76 @@
+name: Deploy demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  import:
+    name: Import production build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtain build
+        env:
+          # First run: fetch the Vite production build exported from the development sandbox.
+          # Later runs: reuse the copy already committed to the gh-pages branch.
+          BUILD_URL: https://sudden-ids-because-files.trycloudflare.com/dist.tgz
+          BUILD_SHA256: fdb511cb3350a2673f063b00ed177bf546fc853c5a2c6eb276cab86c922c0628
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads "https://github.com/${GITHUB_REPOSITORY}.git" gh-pages >/dev/null 2>&1; then
+            echo "Reusing build from gh-pages branch"
+            git clone --quiet --depth=1 --branch gh-pages "https://github.com/${GITHUB_REPOSITORY}.git" site
+            rm -rf site/.git
+          else
+            echo "Downloading build from ${BUILD_URL}"
+            mkdir -p site
+            curl -fsSL --retry 5 --retry-delay 5 "$BUILD_URL" -o dist.tgz
+            echo "${BUILD_SHA256}  dist.tgz" | sha256sum -c -
+            tar -xzf dist.tgz -C site
+            touch site/.nojekyll
+          fi
+          ls -la site site/assets
+
+      - name: Commit build to gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd site
+          git init -q
+          git checkout -q -b gh-pages
+          git add -A
+          git -c user.name=github-actions -c user.email=actions@github.com commit -qm "Ashfall Depths demo build"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: import
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
